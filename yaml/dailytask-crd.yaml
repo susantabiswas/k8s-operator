@@ -38,15 +38,7 @@ spec:
                 maximum: 5
           status:
             type: object
-            properties:
-              today:
-                type: object
-                properties:
-                  time:
-                    type: string
-                    description: The current time
-                  day:
-                    type: string
-                    description: The current day of the week
+            # x-kubernetes-preserve-unknown-fields must be at this level, not under subresources
+            x-kubernetes-preserve-unknown-fields: true
     subresources:
       status: {}
