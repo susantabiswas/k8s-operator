@@ -30,35 +30,47 @@ namespace CRD.Controllers
             // Set up a watcher for our custom resource
             string resourceVersion = "";
 
+            // Create the JSON options with our converter for both serialization and deserialization
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+                Converters =
+                {
+                    new EnumMemberJsonConverter()
+                }
+            };
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
                     // List existing resources to get resource version
                     var customObjects = await _client.CustomObjects.ListNamespacedCustomObjectAsync(
-                        _group, _version, _namespace, _plural, 
+                        _group, _version, _namespace, _plural,
                         resourceVersion: resourceVersion,
                         cancellationToken: cancellationToken);
-                    
+
                     if (customObjects != null)
                     {
                         // Extract the resource version from the JSON response
-                        if (customObjects is JsonElement jsonElement && 
+                        if (customObjects is JsonElement jsonElement &&
                             jsonElement.TryGetProperty("metadata", out JsonElement metadata) &&
                             metadata.TryGetProperty("resourceVersion", out JsonElement resVersion))
                         {
                             resourceVersion = resVersion.GetString();
                             Console.WriteLine($"Using resource version: {resourceVersion}");
                         }
-                        
+
                         // Process any existing resources
-                        if (customObjects is JsonElement rootElement && 
+                        if (customObjects is JsonElement rootElement &&
                             rootElement.TryGetProperty("items", out JsonElement items))
                         {
                             var itemsList = items.EnumerateArray();
                             foreach (var item in itemsList)
                             {
-                                var dailyTask = JsonSerializer.Deserialize<V1DailyTask>(item.GetRawText());
+                                // Use our custom JSON options for deserializing
+                                var dailyTask = JsonSerializer.Deserialize<V1DailyTask>(item.GetRawText(), jsonOptions);
                                 if (dailyTask != null)
                                 {
                                     await UpdateStatus(dailyTask);
@@ -74,20 +86,34 @@ namespace CRD.Controllers
                         resourceVersion: resourceVersion,
                         cancellationToken: cancellationToken);
 
-                    using var watchStream = watchResponse.Watch<V1DailyTask, object>(
-                        onEvent: (type, item) =>
+                    // Create a custom handler to use our deserialization options
+                    using var watchStream = watchResponse.Watch<object, object>(
+                        onEvent: (type, itemObj) =>
                         {
-                            Console.WriteLine($"Received {type} event for DailyTask: {item.Metadata?.Name}");
-                            
-                            if (item.Metadata?.ResourceVersion != null)
+                            try
                             {
-                                resourceVersion = item.Metadata.ResourceVersion;
+                                // Convert the raw object to JSON first
+                                string json = JsonSerializer.Serialize(itemObj);
+
+                                // Then use our custom options to deserialize
+                                var item = JsonSerializer.Deserialize<V1DailyTask>(json, jsonOptions);
+
+                                Console.WriteLine($"Received {type} event for DailyTask: {item?.Metadata?.Name}");
+
+                                if (item?.Metadata?.ResourceVersion != null)
+                                {
+                                    resourceVersion = item.Metadata.ResourceVersion;
+                                }
+
+                                if (type == WatchEventType.Added || type == WatchEventType.Modified)
+                                {
+                                    Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : , event: {type}");
+                                    Task.Run(async () => await UpdateStatus(item), cancellationToken);
+                                }
                             }
-                            
-                            if (type == WatchEventType.Added || type == WatchEventType.Modified)
+                            catch (Exception ex)
                             {
-                                Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : , event: {type}");
-                                Task.Run(async () => await UpdateStatus(item), cancellationToken);
+                                Console.WriteLine($"Error processing watch event: {ex.Message}");
                             }
                         },
                         onClosed: () => Console.WriteLine("Watch connection closed"),
@@ -99,6 +125,10 @@ namespace CRD.Controllers
                 catch (Exception ex) when (!(ex is TaskCanceledException && cancellationToken.IsCancellationRequested))
                 {
                     Console.WriteLine($"Error in controller: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    }
                     await Task.Delay(5000, cancellationToken); // Wait before retrying
                 }
             }
