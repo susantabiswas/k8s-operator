@@ -117,7 +117,8 @@ namespace CRD.Controllers
                     Today = new DayInfo
                     {
                         Time = DateTime.Now.ToString("HH:mm:ss"),
-                        Day = DateTime.Now.DayOfWeek.ToString()
+                        Day = DateTime.Now.DayOfWeek.ToString(),
+                        rating = DayInfo.Rating.Good
                     }
                 };
 
@@ -139,11 +140,16 @@ namespace CRD.Controllers
                     return;
                 }
 
-                // Use JsonSerializer to convert to JSON
+                // Use JsonSerializer to convert to JSON with custom options for enum conversion
                 var options = new JsonSerializerOptions 
                 { 
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    WriteIndented = true // Makes debugging easier
+                    WriteIndented = true,
+                    Converters = 
+                    { 
+                        // Use EnumMemberConverter instead of JsonStringEnumConverter
+                        new EnumMemberJsonConverter()
+                    }
                 };
                 
                 // Create a patch body with our status object
@@ -166,7 +172,7 @@ namespace CRD.Controllers
                         _plural,
                         dailyTask.Metadata.Name);
                     
-                    Console.WriteLine($"Status update successful: {JsonSerializer.Serialize(result)}");
+                    Console.WriteLine($"Status update successful!");
                 }
                 catch (Exception patchEx)
                 {
@@ -184,7 +190,7 @@ namespace CRD.Controllers
                             _plural,
                             dailyTask.Metadata.Name);
                             
-                        Console.WriteLine($"Regular patch successful: {JsonSerializer.Serialize(result)}");
+                        Console.WriteLine($"Regular patch successful!");
                     }
                     catch (Exception regularPatchEx)
                     {

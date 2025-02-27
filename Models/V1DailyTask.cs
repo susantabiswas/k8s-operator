@@ -37,15 +37,16 @@ namespace CRD.Models
         [JsonPropertyName("day")]
         public string Day { get; set; }
 
-        
         public enum Rating
         {
+            [EnumMember(Value = "goodish")]
             Good,
+            [EnumMember(Value = "bad")]
             Bad
         }
 
         [JsonPropertyName("rating")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
+        // Remove the JsonConverter attribute - we'll use our custom converter in the serialization options
         public Rating rating { get; set; }
     }
 
