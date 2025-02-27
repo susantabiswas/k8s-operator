@@ -1,0 +1,8 @@
+apiVersion: example.com/v1
+kind: DailyTask
+metadata:
+  name: task
+spec:
+  taskName: "Code Review1"
+  description: "Review pull requests for the project"
+  priority: 3
